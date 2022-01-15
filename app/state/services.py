@@ -1,14 +1,8 @@
 import typing
 import config
 
-if typing.TYPE_CHECKING:
-    import app.websocket
-    import motor.motor_asyncio
+from app.objects.websocket import WebsocketHandler
+from motor.motor_asyncio import AsyncIOMotorClient
 
-__slots__ = (
-    "WS_HANDLER",
-    "DB"
-)
-
-WS_HANDLER: app.websocket.WebsocketHandler
-DB: motor.motor_asyncio.MotorClient(config.DATABASE)
+DB: AsyncIOMotorClient
+WS_HANDLER: WebsocketHandler

@@ -1,5 +1,5 @@
 import asyncio
-import app
+import app.updater
 
 async def main():
     print(""" ______                                                   _             _ 
@@ -10,8 +10,8 @@ async def main():
 |_|   |_| \__  ||____/ |____/ |_| |_| \___/ (___/ |____/ |_| \_)|_____)|_|
          (____/ > Updater v1.0.0 | Copyright (c) 2021- |
 """)
-    await app.setup()
-    await app.run()
+    await app.updater.setup()
+    await app.updater.run()
 
 asyncio.run(main())
 
