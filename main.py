@@ -31,5 +31,3 @@ async def main():
     await services.WS_HANDLER.run()
 
 asyncio.run(main())
-
-# HEY FUCKER, I'ALIV
