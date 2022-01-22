@@ -1,11 +1,11 @@
 import asyncio
 import enum
-import functools
 import inspect
 import logging
-import random
-from typing import Callable, Awaitable, TYPE_CHECKING, Optional, overload
+import typing
 import aiohttp
+import time
+import app.state as state
 
 
 class Backoff:
@@ -25,41 +25,64 @@ class Backoff:
     def reset(self):
         self._exp = 0
 
-    async def sleep(self):
-        await asyncio.sleep(self.delay)
+    async def sleep(self) -> (float, typing.Awaitable):
+        return self.delay, asyncio.sleep(self.delay)
 
 
-Callback = Callable[[aiohttp.ClientResponse], Awaitable]
+class ShowerLimiter:
+    def __init__(self, bucket: int, refill: int = 60):
+        self.bucket = bucket
+        self.refill = refill
+        self.edge = 0
+
+    @property
+    def every(self):
+        return self.refill / self.bucket
+
+    @staticmethod
+    async def _wait(aws: typing.Awaitable, wait: float):
+        await asyncio.sleep(wait)
+        await aws
+
+    def limit(self, aws: typing.Awaitable) -> typing.Coroutine:
+        called = time.perf_counter_ns() / (10 ** 9)
+        self.edge += self.every
+
+        if called > self.edge:
+            self.edge = called
+
+        return self._wait(aws, self.edge - called)
+
+
+_Callback: typing.TypeAlias = typing.Callable[[aiohttp.ClientResponse], typing.Awaitable]
+_Future = "asyncio.Future[aiohttp.ClientResponse]"
 
 
 class Base(str, enum.Enum):
     API = "https://beatsaver.com/api"
-    CDN = "https://{_region}.cdn.beatsaver.com"
+    CDN = f"https://{state.config.REGION}.cdn.beatsaver.com"
+    TEST = "http://localhost:8080"
 
 
 class Route:
     def __init__(
-        self,
-        base: "Base",
-        path: str,
-        method: str = "GET",
-        *,
-        pathvars: dict = None,
-        params: dict = None,
+            self,
+            base: "Base",
+            path: str,
+            method: str = "GET",
+            *,
+            vars: dict = None,
+            params: dict = None,
     ):
         assert path[0] == "/"
 
         self.method = method
-        self.is_cdn = Base == Base.CDN
-        if self.is_cdn and "_region" not in pathvars:
-            raise ValueError("cannot use _region in a CDN base")
+        self.params = params
+        self.base = base
 
         url = base + path
-        if pathvars:
-            url = url.format_map(pathvars)
-
+        if vars: url = url.format_map(vars)
         self.url = url
-        self.params = params
 
 
 class HTTPClient:
@@ -69,39 +92,32 @@ class HTTPClient:
         self._client = client
         self.loop = asyncio.get_running_loop()  # init client in an async context
 
-        # really depends on where updater is being run
-        # usually gonna be na but sometime not
-        # interprets region from various requests
-        self.region: str = "na"
         self.buckets = {
-            Base.API: ...,
-            Base.CDN: ...,
+            Base.API: ShowerLimiter(1000),
+            Base.CDN: ShowerLimiter(10000, 1)  # apparently not ratelimited
         }
 
     def request(
-        self, route: Route, callback: Callback = None
-    ) -> "asyncio.Future[aiohttp.ClientResponse]":
+            self, route: Route, callback: _Callback = None
+    ) -> _Future:
         fut = self.loop.create_future()
 
-        # lul what
-        if callback and inspect.isawaitable(callback):
-            fut.add_done_callback(lambda f: self.loop.create_task(callback(f.result())))
-
-        self.loop.create_task(self._request(route, fut))
+        self.loop.create_task(
+            self.buckets[route.base].limit(
+                self._request(route, fut, callback)
+            )
+        )
 
         return fut
 
     async def _request(
-        self, route: Route, fut: "asyncio.Future[aiohttp.ClientResponse]"
+            self, route: Route, fut: _Future, callback: _Callback
     ):
         backoff = Backoff()
+        resp = None
 
         # todo log retry number
         for retry in range(self.RETRY_COUNT):
-            # todo might become self.region + "." + url
-            if route.is_cdn:
-                route.url = route.url.format(_region=self.region)
-
             resp = await self._client.request(
                 method=route.method,
                 url=route.url,
@@ -109,14 +125,13 @@ class HTTPClient:
                 verify_ssl=False,  # beatsaver's ssl be crazy
             )
 
-            status = resp.status
-            if 500 < status < 600:
-                logging.debug(f"got {status}, will try again later")
-                await backoff.sleep()
+            if resp.status != 200:
+                delay, sleep = backoff.sleep()
+                logging.debug(f"got {resp.status}, trying again in {delay}")
+                await sleep
                 continue
-            elif 400 < status < 500:
-                logging.debug(f"got {status}, trying again")
-                break
 
-            fut.set_result(resp)
-            break
+        fut.set_result(resp)
+
+        if callback:
+            await callback(resp)
