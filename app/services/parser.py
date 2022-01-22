@@ -1,35 +1,33 @@
-from enum import IntEnum, auto
+MODS = {
+    "CHROMA": 0,
+    "ME": 1,
+    "NE": 2,
+    "CINEMA": 4,
+}
 
+DIFFICULTIES = {
+    "EASY": 0,
+    "NORMAL": 1,
+    "HARD": 2,
+    "EXPERT": 3,
+    "EXPERTPLUS": 4,
+}
 
-class Mods(IntEnum):
-    CHROMA = 1 << 0
-    ME = 1 << 1
-    NE = 1 << 2
-    CINEMA = 1 << 3
+CHARACTERISTICS = {
+    "STANDARD": 0,
+    "NOARROWS": 1,
+    "ONESABER": 2,
+    "360DEGREE": 3,
+    "90DEGREE": 4,
+    "LIGHTSHOW": 5,
+    "LAWLESS": 6,
+}
 
-
-class Difficulties(IntEnum):
-    EASY = auto()
-    NORMAL = auto()
-    HARD = auto()
-    EXPERT = auto()
-    EXPERTPLUS = auto()
-
-
-class Characteristics(IntEnum):
-    STANDARD = auto()
-    NOARROWS = auto()
-    ONESABER = auto()
-    _360DEGREE = auto()
-    _90DEGREE = auto()
-    LIGHTSHOW = auto()
-    LAWLESS = auto()
-
-
-class Status(IntEnum):
-    UNRANKED = auto()
-    QUALIFIED = auto()
-    RANKED = auto()
+STATUS = {
+    "UNRANKED": 0,
+    "QUALIFIED": 1,
+    "RANKED": 2,
+}
 
 
 def parse_beatmap_metadata(data: dict) -> dict:
@@ -44,7 +42,7 @@ def parse_beatmap_metadata(data: dict) -> dict:
             "duration": data["metadata"]["duration"],
         },
         "versions": {"difficulties": {}},
-        "status": Status.UNRANKED,
+        "status": STATUS.get("UNRANKED"),
         "created_at": data["uploaded"],
         "updated_at": data["updatedAt"],
     }
@@ -66,15 +64,8 @@ def parse_beatmap_metadata(data: dict) -> dict:
                 "obstacles": difficulty["obstacles"],
                 "nps": difficulty["nps"],
                 "length": difficulty["length"],
-                "characteristic": Characteristics[
-                    (
-                        "_" + d
-                        if (d := difficulty["characteristic"])
-                        in ["360Degree", "90Degree"]
-                        else d
-                    ).upper()
-                ],
-                "difficulty": Difficulties[difficulty["difficulty"].upper()],
+                "characteristic": CHARACTERISTICS.get(difficulty["characteristic"].upper()),
+                "difficulty": DIFFICULTIES.get(difficulty["difficulty"].upper()),
                 "events": difficulty["events"],
                 "mods": 0,
                 "seconds": difficulty["seconds"],
@@ -86,9 +77,9 @@ def parse_beatmap_metadata(data: dict) -> dict:
                 },
             }
 
-            for mod in Mods:
-                if difficulty[mod.name.lower()]:
-                    current_difficulty["mods"] |= mod
+            for mod in MODS:
+                if difficulty[mod.lower()]:
+                    current_difficulty["mods"] |= MODS[mod]
 
             difficulties.append(current_difficulty)
 
@@ -99,6 +90,6 @@ def parse_beatmap_metadata(data: dict) -> dict:
 
     for status in ["qualified", "ranked"]:
         if data[status]:
-            parsed["status"] = Status[status.upper()]
+            parsed["status"] = STATUS.get(status.upper())
 
     return parsed
