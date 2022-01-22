@@ -9,4 +9,3 @@ except ModuleNotFoundError:
 
 DB: motor.motor_asyncio.AsyncIOMotorClient
 HTTP: app.services.HTTPClient
-

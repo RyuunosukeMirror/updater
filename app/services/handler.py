@@ -3,8 +3,10 @@ import aiohttp
 from app.utils import JSON
 import orjson
 
+
 class Skip(Exception):
     pass
+
 
 class WebsocketHandler:
     ENDPOINT = "wss://ws.beatsaver.com/maps"
@@ -13,13 +15,11 @@ class WebsocketHandler:
         self._client = client
         self.handlers = {
             "MAP_UPDATE": self.handle_map_update,
-            "MAP_DELETE": self.handle_map_delete
+            "MAP_DELETE": self.handle_map_delete,
         }
 
     async def run(self):
-        ws = await self._client.ws_connect(
-            WebsocketHandler.ENDPOINT
-        )
+        ws = await self._client.ws_connect(WebsocketHandler.ENDPOINT)
 
         while True:
             resp = await ws.receive_json(loads=orjson.loads)
@@ -30,7 +30,8 @@ class WebsocketHandler:
                 pass
 
     async def handle_map_update(self, data: JSON):
-        if data["automapper"]: return
+        if data["automapper"]:
+            return
 
         pprint(data)
 

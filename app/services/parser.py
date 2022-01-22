@@ -63,9 +63,10 @@ def parse_beatmap_metadata(data: dict) -> dict:
                 "length": difficulty["length"],
                 "characteristic": Characteristics[
                     (
-                        "_" +
-                        d if (d := difficulty["characteristic"]) in [
-                            "360Degree", "90Degree"] else d
+                        "_" + d
+                        if (d := difficulty["characteristic"])
+                        in ["360Degree", "90Degree"]
+                        else d
                     ).upper()
                 ],
                 "difficulty": Difficulties[difficulty["difficulty"].upper()],

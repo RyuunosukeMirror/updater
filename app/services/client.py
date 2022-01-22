@@ -38,11 +38,15 @@ class Base(str, enum.Enum):
 
 
 class Route:
-    def __init__(self, base: "Base",
-                 path: str,
-                 method: str = "GET", *,
-                 pathvars: dict = None,
-                 params: dict = None):
+    def __init__(
+        self,
+        base: "Base",
+        path: str,
+        method: str = "GET",
+        *,
+        pathvars: dict = None,
+        params: dict = None,
+    ):
         assert path[0] == "/"
 
         self.method = method
@@ -74,24 +78,22 @@ class HTTPClient:
             Base.CDN: ...,
         }
 
-
-
-    def request(self, route: Route, callback: Callback = None) -> "asyncio.Future[aiohttp.ClientResponse]":
+    def request(
+        self, route: Route, callback: Callback = None
+    ) -> "asyncio.Future[aiohttp.ClientResponse]":
         fut = self.loop.create_future()
 
         # lul what
         if callback and inspect.isawaitable(callback):
-            fut.add_done_callback(
-                lambda f: self.loop.create_task(
-                    callback(f.result())
-                )
-            )
+            fut.add_done_callback(lambda f: self.loop.create_task(callback(f.result())))
 
         self.loop.create_task(self._request(route, fut))
 
         return fut
 
-    async def _request(self, route: Route, fut: "asyncio.Future[aiohttp.ClientResponse]"):
+    async def _request(
+        self, route: Route, fut: "asyncio.Future[aiohttp.ClientResponse]"
+    ):
         backoff = Backoff()
 
         # todo log retry number
@@ -104,7 +106,7 @@ class HTTPClient:
                 method=route.method,
                 url=route.url,
                 params=route.params,
-                verify_ssl=False  # beatsaver's ssl be crazy
+                verify_ssl=False,  # beatsaver's ssl be crazy
             )
 
             status = resp.status
