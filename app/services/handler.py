@@ -41,3 +41,34 @@ class WebsocketHandler:
 
     async def handle_map_delete(self, data: JSON):
         pprint(data)
+
+
+async def shunt_api_response(resp: aiohttp.ClientResponse):
+    pass
+
+
+async def shunt_zip(resp: aiohttp.ClientResponse):
+    pass
+
+
+async def shunt_cover(resp: aiohttp.ClientResponse):
+    pass
+
+
+async def shunt_preview(resp: aiohttp.ClientResponse):
+    pass
+
+
+async def crawler(_start: str = "1", _end: Optional[str] = None):
+    if not _end:
+        _end = "ffffff"
+
+    start = int(_start, 16)
+    end = int(_end, 16)
+
+    for map_id in range(start, end):
+        app.state.HTTP.request(
+            Route(Base.API, "/maps/id/{id}", vars={
+                "id": format(map_id, "x")
+            }), callback=shunt_api_response
+        )
