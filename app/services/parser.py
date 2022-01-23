@@ -64,7 +64,9 @@ def parse_beatmap_metadata(data: dict) -> dict:
                 "obstacles": difficulty["obstacles"],
                 "nps": difficulty["nps"],
                 "length": difficulty["length"],
-                "characteristic": CHARACTERISTICS.get(difficulty["characteristic"].upper()),
+                "characteristic": CHARACTERISTICS.get(
+                    difficulty["characteristic"].upper()
+                ),
                 "difficulty": DIFFICULTIES.get(difficulty["difficulty"].upper()),
                 "events": difficulty["events"],
                 "mods": 0,

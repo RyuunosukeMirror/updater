@@ -1,11 +1,13 @@
-import motor.motor_asyncio
+from typing import TYPE_CHECKING
 
-import app.services
+if TYPE_CHECKING:
+    import app.services
+    import motor.motor_asyncio
 
 try:
     import config
 except ModuleNotFoundError:
     print("config.py must be present")
 
-DB: motor.motor_asyncio.AsyncIOMotorClient
-HTTP: app.services.HTTPClient
+DB: "motor.motor_asyncio.AsyncIOMotorClient"
+HTTP: "app.services.HTTPClient"

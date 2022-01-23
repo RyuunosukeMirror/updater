@@ -25,14 +25,19 @@ class Backoff:
     def reset(self):
         self._exp = 0
 
-    async def sleep(self) -> (float, typing.Awaitable):
+    def sleep(self) -> (float, typing.Awaitable):
         return self.delay, asyncio.sleep(self.delay)
 
 
 class ShowerLimiter:
-    def __init__(self, bucket: int, refill: int = 60):
+    """
+    A ratelimiter solution that I figured out in the shower.
+    """
+
+    def __init__(self, bucket: int, refill: int = 60, *, conns: int = 20):
         self.bucket = bucket
         self.refill = refill
+        self.conns = asyncio.Semaphore(conns)
         self.edge = 0
 
     @property
@@ -54,25 +59,31 @@ class ShowerLimiter:
         return self._wait(aws, self.edge - called)
 
 
-_Callback: typing.TypeAlias = typing.Callable[[aiohttp.ClientResponse], typing.Awaitable]
+_Callback = typing.Callable[[aiohttp.ClientResponse], typing.Awaitable]
 _Future = "asyncio.Future[aiohttp.ClientResponse]"
 
 
 class Base(str, enum.Enum):
     API = "https://beatsaver.com/api"
     CDN = f"https://{state.config.REGION}.cdn.beatsaver.com"
-    TEST = "http://localhost:8080"
+    TEST = "http://localhost:8888"
 
 
 class Route:
+    buckets = {
+        Base.API: ShowerLimiter(1000),
+        Base.CDN: ShowerLimiter(10000, 1),  # apparently not ratelimited
+    }
+
     def __init__(
-            self,
-            base: "Base",
-            path: str,
-            method: str = "GET",
-            *,
-            vars: dict = None,
-            params: dict = None,
+        self,
+        base: "Base",
+        path: str,
+        method: str = "GET",
+        *,
+        vars: dict = None,
+        params: dict = None,
+        limiter: "ShowerLimiter" = None,
     ):
         assert path[0] == "/"
 
@@ -81,8 +92,11 @@ class Route:
         self.base = base
 
         url = base + path
-        if vars: url = url.format_map(vars)
+        if vars:
+            url = url.format_map(vars)
         self.url = url
+
+        self.limiter = limiter or self.buckets[base]
 
 
 class HTTPClient:
@@ -91,47 +105,56 @@ class HTTPClient:
     def __init__(self, client: aiohttp.ClientSession):
         self._client = client
         self.loop = asyncio.get_running_loop()  # init client in an async context
-
-        self.buckets = {
-            Base.API: ShowerLimiter(1000),
-            Base.CDN: ShowerLimiter(10000, 1)  # apparently not ratelimited
-        }
+        self.tasks: set[asyncio.Task] = set()
 
     def request(
-            self, route: Route, callback: _Callback = None
-    ) -> _Future:
+        self, route: Route, callback: _Callback = None
+    ) -> typing.Optional[_Future]:
         fut = self.loop.create_future()
 
-        self.loop.create_task(
-            self.buckets[route.base].limit(
-                self._request(route, fut, callback)
-            )
+        task = self.loop.create_task(
+            route.limiter.limit(self._request(route, fut, callback))
         )
+        self.tasks.add(task)
 
-        return fut
+        if callback:
+            return fut
 
-    async def _request(
-            self, route: Route, fut: _Future, callback: _Callback
-    ):
+    async def _request(self, route: Route, fut: _Future, callback: _Callback):
         backoff = Backoff()
         resp = None
 
-        # todo log retry number
         for retry in range(self.RETRY_COUNT):
-            resp = await self._client.request(
-                method=route.method,
-                url=route.url,
-                params=route.params,
-                verify_ssl=False,  # beatsaver's ssl be crazy
-            )
+            try:
+                async with route.limiter.conns, self._client.request(
+                    method=route.method,
+                    url=route.url,
+                    params=route.params,
+                    verify_ssl=False,  # beatsaver's ssl be crazy
+                    timeout=10,
+                ) as resp:
+                    if resp.status != 200:
+                        delay, sleep = backoff.sleep()
+                        logging.debug(f"got {resp.status}, trying again in {delay}")
+                        await sleep
+                        continue
 
-            if resp.status != 200:
-                delay, sleep = backoff.sleep()
-                logging.debug(f"got {resp.status}, trying again in {delay}")
-                await sleep
-                continue
+                    self.tasks.remove(asyncio.current_task(loop=self.loop))
+                    fut.set_result(resp)
 
-        fut.set_result(resp)
+                    if callback:
+                        await callback(resp)
 
-        if callback:
-            await callback(resp)
+                    break
+
+            except asyncio.TimeoutError:
+                logging.error("client timeout error")
+                return
+        else:
+            print("UH OH UH OH")
+
+    async def close(self, force=False):
+        if force:
+            [task.cancel("force close") for task in self.tasks]
+        else:
+            await asyncio.gather(*self.tasks)
