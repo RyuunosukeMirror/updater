@@ -1,13 +1,15 @@
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import app.services
-    import motor.motor_asyncio
-
 try:
     import config
 except ModuleNotFoundError:
     print("config.py must be present")
 
-DB: "motor.motor_asyncio.AsyncIOMotorClient"
-HTTP: "app.services.HTTPClient"
+if TYPE_CHECKING:
+    from services import HTTPClient
+    from pymongo.mongo_client import MongoClient
+    from pymongo.database import Database
+
+DB_CLIENT: "MongoClient"
+DB: "Database"
+HTTP: "HTTPClient"

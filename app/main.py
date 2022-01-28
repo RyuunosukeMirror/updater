@@ -1,38 +1,23 @@
 import asyncio
-import pprint
 
 import aiohttp
+from pymongo.mongo_client import MongoClient
 
-import app.services
 import state
-import motor.motor_asyncio
-from services import Route, Base, ShowerLimiter
-
-
-async def _parse_latest(resp):
-    print(resp)
-
+from services import Base, HTTPClient, Route, ShowerLimiter
+from services.handler import crawler
 
 async def main():
-    state.DB = motor.motor_asyncio.AsyncIOMotorClient(state.config.MONGO_DSN)[
-        state.config.DB_NAME
-    ]
-
+    state.DB = MongoClient(state.config.MONGO_DSN).get_database(state.config.DB_NAME)
+    
     client = aiohttp.ClientSession(
-        headers={"User-Agent": "ryuunosuke.moe/0.0.0"},
+        headers={"User-Agent": "ryuunosuke.moe/0.0.0 (https://ryuunosuke.moe)"},
         connector=aiohttp.TCPConnector(limit=0, ttl_dns_cache=1200, force_close=True),
     )
 
-    state.HTTP = app.services.HTTPClient(client=client)
+    state.HTTP = HTTPClient(client=client)
 
-    l = ShowerLimiter(1200, conns=300)
-    for i in range(5000):
-        state.HTTP.request(
-            Route(Base.CDN, "/17b224cbc23de8abcbde852bd9a2beba50d208bf.zip"),
-            callback=_parse_latest,
-        )
-
-    await state.HTTP.close()
+    await crawler("1500")
 
 
 if __name__ == "__main__":
