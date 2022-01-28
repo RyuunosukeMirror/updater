@@ -1,3 +1,5 @@
+from datetime import datetime as dt
+
 MODS = {
     "CHROMA": 0,
     "ME": 1,
@@ -43,8 +45,8 @@ def parse_beatmap_metadata(data: dict) -> dict:
         },
         "versions": {"difficulties": {}},
         "status": STATUS.get("UNRANKED"),
-        "created_at": data["uploaded"],
-        "updated_at": data["updatedAt"],
+        "created_at": dt.strptime(data["uploaded"], "%Y-%m-%d %H:%M:%S"),
+        "updated_at": dt.strptime(data["updatedAt"], "%Y-%m-%d %H:%M:%S"),
     }
 
     versions = []
@@ -76,7 +78,7 @@ def parse_beatmap_metadata(data: dict) -> dict:
                     "errors": difficulty["paritySummary"]["errors"],
                     "warns": difficulty["paritySummary"]["warns"],
                     "resets": difficulty["paritySummary"]["resets"],
-                },
+                }, 
             }
 
             for mod in MODS:
