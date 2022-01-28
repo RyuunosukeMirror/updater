@@ -45,15 +45,15 @@ def parse_beatmap_metadata(data: dict) -> dict:
         },
         "versions": {"difficulties": {}},
         "status": STATUS.get("UNRANKED"),
-        "created_at": dt.strptime(data["uploaded"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(microsecond=0),
-        "updated_at": dt.strptime(data["updatedAt"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(microsecond=0),
+        "created_at": dt.strptime(data["uploaded"].split(".")[0], "%Y-%m-%dT%H:%M:%SZ"),
+        "updated_at": dt.strptime(data["updatedAt"].split(".")[0], "%Y-%m-%dT%H:%M:%SZ"),
     }
 
     versions = []
     for version in data["versions"]:
         current_version = {
             "hash": version["hash"],
-            "createdAt": version["createdAt"],
+            "createdAt": dt.strptime(version["createdAt"].split(".")[0], "%Y-%m-%dT%H:%M:%SZ"),
         }
 
         difficulties = []
