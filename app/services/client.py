@@ -5,7 +5,7 @@ import logging
 import typing
 import aiohttp
 import time
-import app.state as state
+import state
 
 
 class Backoff:
@@ -25,7 +25,7 @@ class Backoff:
     def reset(self):
         self._exp = 0
 
-    def sleep(self) -> (float, typing.Awaitable):
+    def sleep(self) -> tuple[float, typing.Awaitable]:
         return self.delay, asyncio.sleep(self.delay)
 
 
@@ -72,7 +72,7 @@ class Base(str, enum.Enum):
 class Route:
     buckets = {
         Base.API: ShowerLimiter(1000),
-        Base.CDN: ShowerLimiter(10000, 1),  # apparently not ratelimited
+        Base.CDN: ShowerLimiter(10000, 1, conns=50),  # apparently not ratelimited
     }
 
     def __init__(
@@ -108,23 +108,23 @@ class HTTPClient:
         self.tasks: set[asyncio.Task] = set()
 
     def request(
-        self, route: Route, callback: _Callback = None
+        self, route: Route, callback: _Callback = None, *args, **kwargs
     ) -> typing.Optional[_Future]:
         fut = self.loop.create_future()
 
         task = self.loop.create_task(
-            route.limiter.limit(self._request(route, fut, callback))
+            route.limiter.limit(self._request(route, fut, callback, *args, **kwargs))
         )
         self.tasks.add(task)
 
         if callback:
             return fut
 
-    async def _request(self, route: Route, fut: _Future, callback: _Callback):
+    async def _request(self, route: Route, fut: _Future, callback: _Callback, *args, **kwargs):
         backoff = Backoff()
         resp = None
 
-        for retry in range(self.RETRY_COUNT):
+        for _ in range(self.RETRY_COUNT):
             try:
                 async with route.limiter.conns, self._client.request(
                     method=route.method,
@@ -133,9 +133,12 @@ class HTTPClient:
                     verify_ssl=False,  # beatsaver's ssl be crazy
                     timeout=10,
                 ) as resp:
+                    if resp.status == 404:
+                        return fut.set_result(None)
+                    
                     if resp.status != 200:
                         delay, sleep = backoff.sleep()
-                        logging.debug(f"got {resp.status}, trying again in {delay}")
+                        print(f"got {resp.status}, trying again in {delay}")
                         await sleep
                         continue
 
@@ -143,15 +146,16 @@ class HTTPClient:
                     fut.set_result(resp)
 
                     if callback:
-                        await callback(resp)
+                        await callback(resp, *args, **kwargs)
 
                     break
 
             except asyncio.TimeoutError:
-                logging.error("client timeout error")
+                print("client timeout error")
                 return
         else:
-            print("UH OH UH OH")
+            print("client failed to complete request")
+            fut.set_exception(asyncio.TimeoutError())
 
     async def close(self, force=False):
         if force:
