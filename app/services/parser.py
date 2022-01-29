@@ -32,7 +32,39 @@ STATUS = {
 }
 
 
+def parse_timestamp(timestamp: str) -> dt:
+    """Parse the timestamp from beatsaver API
+    due to them constantly changing the format over
+    the years.
+
+    Args:
+        timestamp (str): The timestamp to parse.
+
+    Returns:
+        dt: The parsed timestamp.
+    """
+
+    # NOTE: This is temporary until we find a better solution.
+    dt_format = "%Y-%m-%dT%H:%M:%SZ"
+    if "." in timestamp:
+        dt_format = (
+            "%Y-%m-%dT%H:%M:%S.%fZ" if "Z" in timestamp else "%Y-%m-%dT%H:%M:%S.%f"
+        )
+    else:
+        dt_format = "%Y-%m-%dT%H:%M:%SZ" if "Z" in timestamp else "%Y-%m-%dT%H:%M:%S"
+    return dt.strptime(timestamp, dt_format)
+
+
 def parse_beatmap_metadata(data: dict) -> dict:
+    """Parse the beatmap metadata from beatsaver API.
+
+    Args:
+        data (dict): The beatmap metadata to parse.
+
+    Returns:
+        dict: The parsed beatmap metadata.
+    """
+
     parsed = {
         "id": data["id"],
         "title": data.get("name"),
@@ -45,15 +77,15 @@ def parse_beatmap_metadata(data: dict) -> dict:
         },
         "versions": {"difficulties": {}},
         "status": STATUS.get("UNRANKED"),
-        "created_at": dt.strptime(data["uploaded"].split(".")[0], "%Y-%m-%dT%H:%M:%SZ"),
-        "updated_at": dt.strptime(data["updatedAt"].split(".")[0], "%Y-%m-%dT%H:%M:%SZ"),
+        "created_at": parse_timestamp(data["uploaded"]),
+        "updated_at": parse_timestamp(data["updatedAt"]),
     }
 
     versions = []
     for version in data["versions"]:
         current_version = {
             "hash": version["hash"],
-            "createdAt": dt.strptime(version["createdAt"].split(".")[0], "%Y-%m-%dT%H:%M:%SZ"),
+            "createdAt": parse_timestamp(version["createdAt"]),
         }
 
         difficulties = []
@@ -78,7 +110,7 @@ def parse_beatmap_metadata(data: dict) -> dict:
                     "errors": difficulty["paritySummary"]["errors"],
                     "warns": difficulty["paritySummary"]["warns"],
                     "resets": difficulty["paritySummary"]["resets"],
-                }, 
+                },
             }
 
             for mod in MODS:
